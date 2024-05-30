@@ -1,0 +1,306 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="org.example.back.mapper.GradeMapper">
+
+    <select id="selectStudentScoresByClassIdByScore" resultType="org.example.back.DTO.StudentScoreDTO">
+        <![CDATA[
+        SELECT
+            s.StudentID,
+            s.Name,
+            s.Gender,
+            COALESCE(SUM(g.TotalScore), 0) AS TotalAllCoursesScore -- 使用COALESCE来处理可能的NULL值
+        FROM
+            student s
+                JOIN teachingclass c ON s.BelongClassId = c.ClassID
+                JOIN grade g ON s.StudentID = g.StudentId
+                JOIN course cu ON g.CourseID = cu.CourseID
+        WHERE
+            c.ClassID = #{classId}
+        GROUP BY
+                 s.StudentID,
+                 s.Name,
+                 s.Gender
+        ORDER BY
+            CASE WHEN SUM(g.TotalScore) IS NULL THEN 1 ELSE 0 END, -- 使用SUM聚合函数的结果来判断是否为NULL
+            TotalAllCoursesScore DESC;
+        ]]>
+    </select>
+
+    <select id="selectStudentScoresByClassIdById" resultType="org.example.back.DTO.StudentScoreDTO">
+        <![CDATA[
+        SELECT
+            s.StudentID,
+            s.Name,
+            s.Gender,
+            COALESCE(SUM(g.TotalScore), 0) AS TotalAllCoursesScore -- 使用COALESCE来处理可能的NULL值
+        FROM
+            student s
+                JOIN teachingclass c ON s.BelongClassId = c.ClassID
+                JOIN grade g ON s.StudentID = g.StudentId
+                JOIN course cu ON g.CourseID = cu.CourseID
+        WHERE
+            c.ClassID = #{classId}
+        GROUP BY
+            s.StudentID,
+            s.Name,
+            s.Gender
+        ORDER BY
+            CASE WHEN SUM(g.TotalScore) IS NULL THEN 1 ELSE 0 END, -- 使用SUM聚合函数的结果来判断是否为NULL
+            s.StudentID;
+        ]]>
+    </select>
+
+    <!-- 根据课程ID统计成绩的分数段分布 -->
+    <select id="countTotalScoreDistributionByCourseCode" resultType="org.example.back.DTO.ScoreDistributionDTO">
+        <![CDATA[
+        SELECT
+            CASE
+                WHEN g.TotalScore < 60 THEN '低于60'
+                WHEN g.TotalScore BETWEEN 60 AND 69 THEN '60-69'
+                WHEN g.TotalScore BETWEEN 70 AND 79 THEN '70-79'
+                WHEN g.TotalScore BETWEEN 80 AND 89 THEN '80-89'
+                WHEN g.TotalScore BETWEEN 90 AND 100 THEN '90-100'
+                ELSE '未知'
+                END AS scoreRange,
+            c.CourseName,
+            c.CourseCode,
+            COUNT(*) AS count
+        FROM
+            grade g
+            INNER JOIN teachingclass tc ON tc.ClassID = g.classId
+            INNER JOIN course c ON c.CourseID = tc.CourseId
+        WHERE
+            c.CourseCode = #{courseCode}
+        GROUP BY
+            CASE
+                WHEN g.TotalScore < 60 THEN '低于60'
+                WHEN g.TotalScore BETWEEN 60 AND 69 THEN '60-69'
+                WHEN g.TotalScore BETWEEN 70 AND 79 THEN '70-79'
+                WHEN g.TotalScore BETWEEN 80 AND 89 THEN '80-89'
+                WHEN g.TotalScore BETWEEN 90 AND 100 THEN '90-100'
+                ELSE '未知'
+                END
+        ORDER BY
+            CASE
+                WHEN g.TotalScore < 60 THEN 1
+                WHEN g.TotalScore BETWEEN 60 AND 69 THEN 2
+                WHEN g.TotalScore BETWEEN 70 AND 79 THEN 3
+                WHEN g.TotalScore BETWEEN 80 AND 89 THEN 4
+                WHEN g.TotalScore BETWEEN 90 AND 100 THEN 5
+                ELSE 6
+                END
+        ]]>
+    </select>
+
+    <!-- 统计总成绩的分数段分布 -->
+    <select id="countTotalScoreDistribution"  resultType="org.example.back.DTO.ScoreDistributionDTO">
+        <![CDATA[
+        SELECT
+            CASE
+                WHEN TotalAllCoursesScore BETWEEN 0 AND 99 THEN '0-99'
+                WHEN TotalAllCoursesScore BETWEEN 100 AND 199 THEN '100-199'
+                WHEN TotalAllCoursesScore BETWEEN 200 AND 300 THEN '200-300'
+                -- 可以根据需要添加更多的区间
+                ELSE '300+'
+                END AS ScoreRange,
+            COUNT(*) AS count
+        FROM (
+                 SELECT
+                     s.StudentID,
+                     SUM(g.TotalScore) AS TotalAllCoursesScore
+                 FROM
+                     student s
+                         JOIN grade g ON s.StudentID = g.StudentID
+                 GROUP BY
+                     s.StudentID
+             ) AS StudentTotalScores
+        GROUP BY
+            ScoreRange
+        ORDER BY
+            MIN(TotalAllCoursesScore);
+        ]]>
+    </select>
+
+    <!-- 根据学生学号查询所有科目成绩 -->
+    <select id="findAllScoresByStudentId" resultType="org.example.back.DTO.StudentScoreDTO">
+        SELECT
+            s.StudentID,
+            s.Name,
+            s.Gender,
+            cu.CourseCode as courseCode,
+            cu.CourseID as courseId,
+            tc.teacherName,
+            cu.CourseName,
+            g.RegularScore,
+            g.MidScore,
+            g.FinalScore,
+            g.TotalScore
+        FROM
+            student s
+                JOIN grade g ON s.StudentID = g.StudentID
+                JOIN teachingclass tc ON tc.ClassID = g.classId
+                JOIN course cu ON g.CourseID = cu.CourseID
+        WHERE
+            s.StudentID = #{studentId}
+          AND (#{courseName} IS NULL OR #{courseName} = '' OR cu.CourseName LIKE #{courseName})
+          AND (#{courseCode} IS NULL OR #{courseCode} = '' OR cu.CourseCode LIKE #{courseCode})
+        ORDER BY cu.CourseName
+    </select>
+
+    <!-- 根据学生学号查询总成绩 -->
+    <select id="findTotalScoresByStudentId" parameterType="int" resultType="org.example.back.DTO.StudentScoreDTO">
+        SELECT
+            s.StudentID,
+            s.Name,
+            s.Gender,
+            SUM(g.TotalScore) AS TotalAllCoursesScore
+        FROM
+            student s
+                JOIN grade g ON s.StudentID = g.StudentID
+                JOIN course cu ON g.CourseID = cu.CourseID
+        WHERE
+            s.StudentID = #{studentId}
+    </select>
+
+    <!-- 根据学生姓名查询所有科目成绩 -->
+    <select id="findAllScoresByStudentName" parameterType="String" resultType="org.example.back.DTO.StudentScoreDTO">
+        SELECT
+            s.StudentID,
+            s.Name,
+            s.Gender,
+            g.CourseID,
+            cu.CourseName,
+            g.RegularScore,
+            g.MidScore,
+            g.FinalScore,
+            g.TotalScore
+        FROM
+            student s
+                JOIN grade g ON s.StudentID = g.StudentID
+                JOIN course cu ON g.CourseID = cu.CourseID
+        WHERE
+            s.Name = #{studentName}
+    </select>
+
+    <!-- 根据学生姓名查询总成绩 -->
+    <select id="findTotalScoresByStudentName" parameterType="String" resultType="org.example.back.DTO.StudentScoreDTO">
+        SELECT
+            s.StudentID,
+            s.Name,
+            s.Gender,
+            SUM(g.TotalScore) AS TotalAllCoursesScore
+        FROM
+            student s
+                JOIN grade g ON s.StudentID = g.StudentID
+                JOIN course cu ON g.CourseID = cu.CourseID
+        WHERE
+            s.Name = #{studentName}
+    </select>
+
+    <!-- 根据学生学号排名所有学生 -->
+    <select id="sortByStudentId"  resultType="org.example.back.entity.Student">
+        SELECT
+            *
+        FROM
+            student s
+
+        ORDER BY
+            s.StudentID
+    </select>
+
+    <!-- 根据各科成绩排序 -->
+    <select id="sortByCourse" parameterType="int" resultType="org.example.back.DTO.StudentScoreDTO">
+        SELECT
+            s.StudentID,
+            s.Name,
+            s.Gender,
+            g.CourseID,
+            cu.CourseName,
+            g.RegularScore,
+            g.MidScore,
+            g.FinalScore,
+            g.TotalScore
+        FROM
+            student s
+                JOIN grade g ON s.StudentID = g.StudentID
+                JOIN course cu ON g.CourseID = cu.CourseID
+        WHERE
+            g.CourseID = #{courseId}
+        ORDER BY
+            g.TotalScore DESC -- 按总成绩降序排列
+    </select>
+
+    <!-- 根据总成绩排序 -->
+    <select id="sortByTotalScore"  resultType="org.example.back.DTO.StudentScoreDTO">
+        SELECT
+            s.StudentID,
+            s.Name,
+            s.Gender,
+            SUM(g.TotalScore) AS TotalAllCoursesScore
+        FROM
+            student s
+                JOIN grade g ON s.StudentID = g.StudentID
+        GROUP BY
+            s.StudentID, s.Name, s.Gender
+        ORDER BY
+            TotalAllCoursesScore DESC;
+    </select>
+
+<!--    分页查询(有条件:teacherId)-->
+   <select id="selectPageWithTeacherId" resultType="org.example.back.DTO.StudentScoreDTO">
+        SELECT
+        c.CourseCode,
+        c.CourseID,
+        c.CourseName,
+        s.Name as name,
+        g.RegularScore,
+        g.MidScore,
+        g.FinalScore,
+        g.TotalScore,
+        g.StudentId,
+        g.GradeId
+    FROM
+        grade g
+            INNER JOIN teachingclass tc ON g.classId = tc.ClassID
+            INNER JOIN course c ON tc.CourseId = c.CourseID
+            INNER JOIN student s ON g.StudentId = s.StudentId
+    WHERE tc.TeacherId = #{teacherId}
+      AND (#{studentId} IS NULL OR #{studentId} = '' OR s.StudentID LIKE #{studentId})
+      AND (#{studentName} IS NULL OR #{studentName} = '' OR s.Name LIKE #{studentName})
+    ORDER BY c.CourseName
+   </select>
+
+<!--    INNER JOIN course c ON g.CourseId = c.CourseCode-->
+<!--    INNER JOIN student s ON g.StudentId = s.StudentId-->
+
+    <!--    分页查询(无条件:all students)-->
+    <select id="selectPageAll" resultType="org.example.back.DTO.StudentScoreDTO">
+        SELECT
+            g.GradeId,
+            g.classId,
+            tc.ClassName,
+            s.StudentID,
+            s.Name,
+            c.CourseCode,
+            c.CourseID,
+            c.CourseName,
+            g.RegularScore,
+            g.MidScore,
+            g.FinalScore,
+            g.TotalScore
+        FROM
+            grade g
+                JOIN student s ON s.StudentID = g.StudentId
+                INNER JOIN teachingclass tc ON g.classId = tc.ClassID
+                INNER JOIN course c ON tc.CourseId = c.CourseID
+        WHERE (#{studentId} IS NULL OR #{studentId} = '' OR s.StudentID LIKE #{studentId})
+            AND (#{studentName} IS NULL OR #{studentName} = '' OR s.Name LIKE #{studentName})
+            AND (#{courseName} IS NULL OR #{courseName} = '' OR c.CourseName LIKE #{courseName})
+            AND (#{courseCode} IS NULL OR #{courseCode} = '' OR c.CourseCode LIKE #{courseCode})
+            AND (#{className} IS NULL OR #{className} = '' OR tc.ClassName LIKE #{className})
+        ORDER BY s.StudentID, c.CourseName
+    </select>
+</mapper>
